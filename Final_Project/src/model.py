@@ -18,15 +18,14 @@ class ResidualBlock(nn.Module):
 											padding = 1,
 											bias = False),
 						nn.BatchNorm2d(outchannel, track_running_stats = True),
-						nn.ReLU(inplace = True),
+						nn.ReLU(),
 						nn.Conv2d(outchannel,
 											outchannel,
 											kernel_size = 3,
 											stride = 1,
 											padding = 1,
 											bias = False),
-						nn.BatchNorm2d(outchannel, track_running_stats = True),
-						nn.ReLU())
+						nn.BatchNorm2d(outchannel, track_running_stats = True))
 
 				self.shortcut = nn.Sequential()
 
@@ -38,12 +37,12 @@ class ResidualBlock(nn.Module):
 													kernel_size = 1,
 													stride = stride,
 													bias = False),
-								nn.BatchNorm2d(outchannel, track_running_stats = True))
+								nn.BatchNorm2d(outchannel, track_running_stats = True),
+								nn.ReLU())
 
 		def forward(self, x):
 				out = self.left(x)
 				out += self.shortcut(x)
-				# out = F.relu(out)
 				return out
 
 # ResNet
@@ -84,7 +83,7 @@ class ResNet(nn.Module):
 				x = self.layer2(x)
 				# 100, 256, 24, 24
 				x = self.layer3(x)
-				# 100, 512, 12, 1
+				# 100, 512, 12, 12
 				x = self.layer4(x)
 				# 100, 512, 1, 1
 				x = nn.AdaptiveAvgPool2d(1)(x)
@@ -139,19 +138,20 @@ def fit(model, data_loader, optimizer, criterion, current_epoch):
 	batches = tqdm(data_loader, total=len(data_loader))
 	total_loss = 0
 	for images, labels, _ in batches:
-		images = images.to(model_config.DEVICE)
-		labels = labels.to(model_config.DEVICE)
-		preds = model(images)
-		# print(preds)
-		loss = criterion(preds, labels)
-		# 初始化梯度
-		optimizer.zero_grad()
-		# 更新權重
-		loss.backward()
-		optimizer.step()
-		batches.set_description(f'Epoch [{current_epoch+1}/{model_config.EPOCHS}]')
-		batches.set_postfix(loss = loss.item())
-		total_loss += loss.item()
+		with torch.autograd.set_detect_anomaly(True):
+			images = images.to(model_config.DEVICE)
+			labels = labels.to(model_config.DEVICE)
+			preds = model(images)
+			# print(preds)
+			loss = criterion(preds, labels)
+			batches.set_description(f'Epoch [{current_epoch+1}/{model_config.EPOCHS}]')
+			batches.set_postfix(loss = loss.item())
+			total_loss = total_loss + loss.item()
+			# 初始化梯度
+			optimizer.zero_grad()
+			# 更新權重
+			loss.backward()
+			optimizer.step()
 	print(f'Current Epoch:{current_epoch+1},Total Loss:{total_loss}')
 
 def eval(model, data_loader):
@@ -221,24 +221,24 @@ def predict(model, data_loader, df):
 
 
 if __name__ == '__main__':
-	# df = parse_annotation(data_config.ROOT_PATH)
-	# # df_train, df_val = split_train_val(df, random_seed=42)
-	# # train_ds = CaptchaDataset(data_config.ROOT_PATH, df_train)
-	# train_ds = CaptchaDataset(data_config.ROOT_PATH, df)
-	# train_dl = DataLoader(train_ds, batch_size=model_config.BATCH_SIZE, num_workers=4, drop_last=True, shuffle=True)
+	df = parse_annotation(data_config.ROOT_PATH)
+	# df_train, df_val = split_train_val(df, random_seed=42)
+	# train_ds = CaptchaDataset(data_config.ROOT_PATH, df_train)
+	train_ds = CaptchaDataset(data_config.ROOT_PATH, df)
+	train_dl = DataLoader(train_ds, batch_size=model_config.BATCH_SIZE, num_workers=4, drop_last=True, shuffle=True)
 
-	# # train
-	# model = CaptchaCNN()
-	# model = ResNet(ResidualBlock)
-	# model.to(model_config.DEVICE)
-	# optimizer = torch.optim.Adam(model.parameters(), lr=model_config.LR)
-	# criterion=nn.MultiLabelSoftMarginLoss()
-	# for epoch in range(model_config.EPOCHS):
-	# 	fit(model, data_loader=train_dl, optimizer=optimizer, criterion=criterion, current_epoch=epoch)
-	# 	if (epoch+1) % 50 == 0:
-	# 		torch.save(model.state_dict(), f"./model_ResNet_all_data_34_epoch_{epoch+1}.pkl") 
-	# # torch.save(model.state_dict(), "./model_ResNet_all_data_34_0.01.pkl")   #current is model.pkl
-	# print("save last model")
+	# train
+	model = CaptchaCNN()
+	model = ResNet(ResidualBlock)
+	model.to(model_config.DEVICE)
+	optimizer = torch.optim.Adam(model.parameters(), lr=model_config.LR)
+	criterion=nn.MultiLabelSoftMarginLoss()
+	for epoch in range(model_config.EPOCHS):
+		fit(model, data_loader=train_dl, optimizer=optimizer, criterion=criterion, current_epoch=epoch)
+		if (epoch+1) % 50 == 0:
+			torch.save(model.state_dict(), f"./model_ResNet_all_data_34_epoch_{epoch+1}.pkl") 
+	# torch.save(model.state_dict(), "./model_ResNet_all_data_34_0.01.pkl")   #current is model.pkl
+	print("save last model")
 
 	# validate
 	# model = CaptchaCNN()
@@ -250,9 +250,9 @@ if __name__ == '__main__':
 	# eval(model, eval_dl)
 
 	# predict
-	df_test = parse_submission(data_config.ROOT_PATH)
-	test_ds = CaptchaDataset(data_config.ROOT_PATH, df_test, is_predict=True)
-	test_dl = DataLoader(test_ds, batch_size=1, num_workers=4, drop_last=True, shuffle=False)
-	model = ResNet(ResidualBlock)
-	model.to(model_config.DEVICE)
-	predict(model, test_dl, df_test)
+	# df_test = parse_submission(data_config.ROOT_PATH)
+	# test_ds = CaptchaDataset(data_config.ROOT_PATH, df_test, is_predict=True)
+	# test_dl = DataLoader(test_ds, batch_size=1, num_workers=4, drop_last=True, shuffle=False)
+	# model = ResNet(ResidualBlock)
+	# model.to(model_config.DEVICE)
+	# predict(model, test_dl, df_test)
