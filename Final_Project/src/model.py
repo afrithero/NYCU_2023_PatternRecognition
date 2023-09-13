@@ -222,29 +222,28 @@ def predict(model, data_loader, df):
 
 if __name__ == '__main__':
 	df = parse_annotation(data_config.ROOT_PATH)
+	model = ResNet(ResidualBlock)
+	# model.to(model_config.DEVICE)
+	if torch.cuda.device_count() > 1:
+		print("Let's use", torch.cuda.device_count(), "GPUs!")
+		model = nn.DataParallel(model, dim=0)
+	# train
 	# df_train, df_val = split_train_val(df, random_seed=42)
 	# train_ds = CaptchaDataset(data_config.ROOT_PATH, df_train)
 	train_ds = CaptchaDataset(data_config.ROOT_PATH, df)
 	train_dl = DataLoader(train_ds, batch_size=model_config.BATCH_SIZE, num_workers=4, drop_last=True, shuffle=True)
-
-	# train
-	model = CaptchaCNN()
-	model = ResNet(ResidualBlock)
 	model.to(model_config.DEVICE)
 	optimizer = torch.optim.Adam(model.parameters(), lr=model_config.LR)
 	criterion=nn.MultiLabelSoftMarginLoss()
+	
 	for epoch in range(model_config.EPOCHS):
 		fit(model, data_loader=train_dl, optimizer=optimizer, criterion=criterion, current_epoch=epoch)
 		if (epoch+1) % 50 == 0:
 			torch.save(model.state_dict(), f"./model_ResNet_all_data_34_epoch_{epoch+1}.pkl") 
-	# torch.save(model.state_dict(), "./model_ResNet_all_data_34_0.01.pkl")   #current is model.pkl
+
 	print("save last model")
 
 	# validate
-	# model = CaptchaCNN()
-	# model = ResNet(ResidualBlock)
-	# model.to(model_config.DEVICE)
-
 	# eval_ds = CaptchaDataset(data_config.ROOT_PATH, df_val)
 	# eval_dl = DataLoader(eval_ds, batch_size=1, num_workers=4, drop_last=True, shuffle=True)
 	# eval(model, eval_dl)
@@ -252,7 +251,5 @@ if __name__ == '__main__':
 	# predict
 	# df_test = parse_submission(data_config.ROOT_PATH)
 	# test_ds = CaptchaDataset(data_config.ROOT_PATH, df_test, is_predict=True)
-	# test_dl = DataLoader(test_ds, batch_size=1, num_workers=4, drop_last=True, shuffle=False)
-	# model = ResNet(ResidualBlock)
-	# model.to(model_config.DEVICE)
+	# test_dl = DataLoader(test_ds, batch_size=1, num_workers=4, drop_last=True, shuffle=False)	
 	# predict(model, test_dl, df_test)
